@@ -37,13 +37,47 @@ Real component of a Complex Number.
 If we want to think about our different interactions between Real and
 Complex numbers, here's a simple table:
 
-Real + Real       => Real
-Real + Complex    => Complex
+Real    + Real    => Real
+Real    + Complex => Complex
 Complex + Real    => Complex
 Complex + Complex => Complex
 
 The + can be any common binary arithmetic operation (+-*/^) but
 the interactions stay the same.
+
+So again, visualize an arithmetic tree like the following
+
+                 (Add)
+                /     \
+             (Sub)   (Mul)
+            / \      /  \
+           10 5     8   (Neg)
+                          \
+                          -7
+
+In our structure, there exists two different types of "nodes". One is
+an arithmetic operation, the other is a "value" type of either Real,
+Complex or NaN. The nodes will hold pointers to sub-trees, and in order
+to calculate a tree, you must recursively traverse the tree.
+
+As you traverse the tree, you evaluate each sub-tree until it returns
+a finalized value type. If we were to evaluate the top-level node of this
+tree, it would look like:
+
+Solve(Add(a, b)) = Solve(a) + Solve(b)
+
+Where `a` and `b` are pointers to it's sub-trees. The same can be done for
+all arithmetic operators
+
+Solve(Sub(a, b)) = Solve(a) - Solve(b)
+Solve(Mul(a, b)) = Solve(a) * Solve(b)
+Solve(Div(a, b)) = Solve(a) / Solve(b)
+...
+
+And so on and so forth. Once recursion hits a final value, it will
+climb back up to it's parent node and complete the equation. If any
+values are in fact a NaN, then the entire equation is invalidated and
+the NaN will bubble all the way to the top of the tree as the final value.
 
 
 Extending the Arithmetic tree to support Complex numerals is
@@ -54,6 +88,7 @@ values.
 > data Arith a = NaN
 >              | Real a
 >              | Complex a a
+>              | Abs  (Arith a)
 >              | Neg  (Arith a)
 >              | Conj (Arith a)  -- specific to complex nums
 >              | Add  (Arith a) (Arith a)
@@ -90,19 +125,20 @@ nothing, meaning we just negate the given Imag component.
 The subtraction of two complex nums is (a+bj)-(c+dj) = (a-c)+(b-d)j
 
 > sub :: (Num a, Fractional a) => Arith a -> Arith a -> Arith a
-> sub (Real x) (Real y) = Real (x - y)
-> sub (Real x) (Complex r i) = Complex (x - r) (i * (-1.0))
-> sub (Complex r i) (Real y) = Complex (r - y) i
-> sub (Complex r0 i0) (Complex r1 i1) = Complex (r0 - r1) (r1 - i1)
+> sub (Real x)        (Real y)        = Real (x - y)
+> sub (Real x)        (Complex r i)   = Complex (x-r) (i*(-1.0))
+> sub (Complex r i)   (Real y)        = Complex (r-y) i
+> sub (Complex r0 i0) (Complex r1 i1) = Complex (r0-r1) (r1-i1)
 > sub _ _ = NaN
 
 
+(a+bj) * (c+dj) = (ac-bd) + (ad+bc)j
 
 > mul :: (Num a) => Arith a -> Arith a -> Arith a
-> mul (Real x) (Real y) = Real (x * y)
-> mul (Real x) (Complex r i) = NaN
-> mul (Complex r i ) (Real y) = NaN
-> mul (Complex r0 i0) (Complex r1 i1) = NaN
+> mul (Real x)        (Real y)        = Real (x*y)
+> mul (Real x)        (Complex r i)   = Complex (x*r) (x*i)
+> mul (Complex r i )  (Real y)        = Complex (y*r) (y*i)
+> mul (Complex r0 i0) (Complex r1 i1) = Complex ((r0*r1)-(i0*i1)) ((r0*i1)+(r1*i0))
 > mul _ _ = NaN
 
 
@@ -121,17 +157,20 @@ Division is the most complicated Complex arithmetic case of all.
 When doing Real/Complex division it is fairly simple, but Complex/Complex
 division is very tricky with lots of multiplication and division.
 
+(a+bj) / (c+dj) = (ac+bd)/(a^2+b^2) + (ad-cb)/(a^2+b^2)
+
 > mdiv :: (Eq a, Num a, Fractional a) => Arith a -> Arith a -> Arith a
-> mdiv (Real x) (Real y) = if (isZero (Real y)) then NaN else Real (x / y) 
-> mdiv (Real x) (Complex r i) = if (isZero (Complex r i))
->                                then NaN
->                                else (Complex r i)
-> mdiv (Complex r i) (Real y) = if (isZero (Real y)) then NaN
->                                else Complex (r / y) (i / y)
-> mdiv (Complex r0 i0) (Complex r1 i1) = if (isZero (Complex r1 i1))
->                                         then NaN
->                                         else NaN 
-> 
+> mdiv (Real x)        (Real y)        = if (isZero (Real y)) then NaN
+>                                        else Real (x / y) 
+> mdiv (Real x)        (Complex r i)   = if (isZero (Complex r i)) then NaN
+>                                        else (Complex r i)
+> mdiv (Complex r i)   (Real y)        = if (isZero (Real y)) then NaN
+>                                        else Complex (r / y) (i / y)
+> mdiv (Complex r0 i0) (Complex r1 i1) = if (isZero (Complex r1 i1)) then NaN
+>                                        else let d=((r1*r1)+(i1*i1)) in
+>                                               (Complex
+>                                                (((r0*r1)+(i0*i1))/d)
+>                                                (((i0*r1)-(r0*i1))/d))
 > mdiv _ _ = NaN
 
 
@@ -145,25 +184,38 @@ Negate(5+2j) => -5-2j
 > neg _             = NaN
 
 
+The Absolute value of a number will return a positive-only value.
+This is a unary operator that works both on Real and Complex values.
+
+> toPosn :: (Num a, Fractional a, Ord a) => a -> a
+> toPosn x = if x < 0.0 then (x*(-1.0)) else x
+
+> mabs :: (Num a, Fractional a, Ord a) => Arith a -> Arith a
+> mabs (Real x)       = Real (toPosn x)
+> mabs (Complex r i)  = Complex (toPosn r) (toPosn i)
+> mabs _              = NaN
+
+
 A Conjugate negates the Imag component of a Complex number
 If used on anything else, should produce a NaN (can't conjugate a Real)
 
 > conj :: (Num a, Fractional a) => Arith a -> Arith a
 > conj (Complex r i) = Complex r (i * (-1.0))
-> conj _ = NaN
+> conj _             = NaN
 
 
 Lifting is now a lot easier because we don't have to write
 specific patterns dealing with NaN. Because we wrote all the rules
 in our arithmetic functions, we simply just delegate a function to
-both values
+both values (see "arith_tree.lhs" for the original code)
 
 Now for the final part where we solve our arithmetic tree, matching
 across all patterns and solving for the final value
 
-> solve :: (Eq a, Num a, Fractional a, Floating a) => Arith a -> Arith a
+> solve :: (Eq a, Num a, Fractional a, Floating a, Ord a) => Arith a -> Arith a
 > solve (Real x)      = Real x
 > solve (Complex r i) = Complex r i
+> solve (Abs a)       = mabs (solve a)
 > solve (Neg a)       = neg  (solve a)
 > solve (Conj a)      = conj (solve a)
 > solve (Add a b)     = add  (solve a) (solve b)
@@ -171,6 +223,8 @@ across all patterns and solving for the final value
 > solve (Mul a b)     = mul  (solve a) (solve b)
 > solve (Div a b)     = mdiv (solve a) (solve b)
 
+
+Testing to make sure it all works.
 
 > main :: IO ()
 > main = do
@@ -182,5 +236,9 @@ across all patterns and solving for the final value
 >   putStrLn $ show $ solve (Add (Real 5) (Complex 3 5))
 >   putStr "(/ 5 (0+0j)) => "
 >   putStrLn $ show $ solve (Div (Real 5) (Complex 0 0))
+>   putStr "(* (3+5j) (2+3j)) => "
+>   putStrLn $ show $ solve (Mul (Complex 3 5) (Complex 2 3))
+>   putStr "(/ (10+10j) (2+2j)) => "
+>   putStrLn $ show $ solve (Div (Complex 10 10) (Complex 2 2))
 
 -- end
