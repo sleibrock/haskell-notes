@@ -132,12 +132,18 @@ The subtraction of two complex nums is (a+bj)-(c+dj) = (a-c)+(b-d)j
 > sub _ _ = NaN
 
 
+Multiplication is a lot like the product of two vectors where you
+cross-multiply across the two sets of numbers and add them back together.
+First define Real x Real / Complex x Complex multiplication, then for
+Real x Complex, cast the Real to a Complex value and recurisvely call
+the multiplication function again to compute the final value.
+
 (a+bj) * (c+dj) = (ac-bd) + (ad+bc)j
 
 > mul :: (Num a) => Arith a -> Arith a -> Arith a
 > mul (Real x)        (Real y)        = Real (x*y)
-> mul (Real x)        (Complex r i)   = Complex (x*r) (x*i)
-> mul (Complex r i )  (Real y)        = Complex (y*r) (y*i)
+> mul (Real x)        (Complex r i)   = mul (Complex x 0) (Complex r i)
+> mul (Complex r i )  (Real y)        = mul (Complex r i) (Complex r 0)
 > mul (Complex r0 i0) (Complex r1 i1) = Complex ((r0*r1)-(i0*i1)) ((r0*i1)+(r1*i0))
 > mul _ _ = NaN
 
@@ -153,24 +159,22 @@ and assert a Boolean.
 > isZero _             = False
 
 
-Division is the most complicated Complex arithmetic case of all.
-When doing Real/Complex division it is fairly simple, but Complex/Complex
-division is very tricky with lots of multiplication and division.
+Division is the most complicated Complex arithmetic case of all. The simplest
+way of doing this is describing Real/Real and Complex/Complex division firstly.
+Then when doing Real/Complex division, simply cast the Real number to a
+Complex and recurisvely call the mdiv function again
 
 (a+bj) / (c+dj) = (ac+bd)/(a^2+b^2) + (ad-cb)/(a^2+b^2)
 
 > mdiv :: (Eq a, Num a, Fractional a) => Arith a -> Arith a -> Arith a
-> mdiv (Real x)        (Real y)        = if (isZero (Real y)) then NaN
->                                        else Real (x / y) 
-> mdiv (Real x)        (Complex r i)   = if (isZero (Complex r i)) then NaN
->                                        else (Complex r i)
-> mdiv (Complex r i)   (Real y)        = if (isZero (Real y)) then NaN
->                                        else Complex (r / y) (i / y)
-> mdiv (Complex r0 i0) (Complex r1 i1) = if (isZero (Complex r1 i1)) then NaN
->                                        else let d=((r1*r1)+(i1*i1)) in
->                                               (Complex
->                                                (((r0*r1)+(i0*i1))/d)
->                                                (((i0*r1)-(r0*i1))/d))
+> mdiv (Real x) (Real y)  = if (isZero (Real y)) then NaN else Real (x/y) 
+> mdiv (Real x)      (Complex r i) = mdiv (Complex x 0) (Complex r i)
+> mdiv (Complex r i) (Real y)      = mdiv (Complex r i) (Complex y 0) 
+> mdiv (Complex a b) (Complex c d) = if (isZero (Complex c d)) then NaN
+>                                    else let de=((c*c)+(d*d)) in
+>                                           (Complex
+>                                             (((a*c)+(b*d))/de)
+>                                             (((b*c)-(a*d))/de))
 > mdiv _ _ = NaN
 
 
