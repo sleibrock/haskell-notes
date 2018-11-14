@@ -135,9 +135,9 @@ division is very tricky with lots of multiplication and division.
 > mdiv _ _ = NaN
 
 
-
-
-
+Negation is simply inverting a number over it's X (or real/imag) axis.
+Negate(5) => -5
+Negate(5+2j) => -5-2j
 
 > neg :: (Num a, Fractional a) => Arith a -> Arith a
 > neg (Real x)      = Real (x * (-1.0))
@@ -158,8 +158,8 @@ specific patterns dealing with NaN. Because we wrote all the rules
 in our arithmetic functions, we simply just delegate a function to
 both values
 
-Now for the final part where we solve our arithmetic tree, integrating
-all our equations and lifting appropriately
+Now for the final part where we solve our arithmetic tree, matching
+across all patterns and solving for the final value
 
 > solve :: (Eq a, Num a, Fractional a, Floating a) => Arith a -> Arith a
 > solve (Real x)      = Real x
@@ -180,5 +180,7 @@ all our equations and lifting appropriately
 >   putStrLn $ show $ solve (Add (Complex 3 4) (Complex 2 3))
 >   putStr "(+ 5 (3+5j)) => "
 >   putStrLn $ show $ solve (Add (Real 5) (Complex 3 5))
+>   putStr "(/ 5 (0+0j)) => "
+>   putStrLn $ show $ solve (Div (Real 5) (Complex 0 0))
 
 -- end
