@@ -119,7 +119,7 @@ components of numbers. Such that (a+bj)+(c+dj) = (a+c)+(b+d)j
 > add (Real x) (Complex r i)          = Complex (r + x) i
 > add (Complex r i) (Real y)          = Complex (r + y) i
 > add (Complex r0 i0) (Complex r1 i1) = Complex (r0 + r1) (i0 + i1)
-> add _ _                             = NaN
+> add _ _ = NaN
 
 
 Subtraction is more or less simliar to addition. It's tricky with
@@ -159,7 +159,7 @@ and assert a Boolean.
 > isZero :: (RealFloat a) => Arith a -> Bool
 > isZero (Real a)      = a == 0
 > isZero (Complex r i) = and [r==0, i==0]
-> isZero _             = False
+> isZero _ = False
 
 
 Division is the most complicated Complex arithmetic case of all. The simplest
@@ -188,7 +188,7 @@ Negate(5+2j) => -5-2j
 > neg :: (RealFloat a) => Arith a -> Arith a
 > neg (Real x)      = Real (x * (-1.0))
 > neg (Complex r i) = Complex (r * (-1.0)) (i * (-1.0))
-> neg _             = NaN
+> neg _ = NaN
 
 
 The Absolute value of a number will return a positive-only value.
@@ -200,7 +200,7 @@ This is a unary operator that works both on Real and Complex values.
 > mabs :: (RealFloat a) => Arith a -> Arith a
 > mabs (Real x)       = Real (toPosn x)
 > mabs (Complex r i)  = Complex (toPosn r) (toPosn i)
-> mabs _              = NaN
+> mabs _ = NaN
 
 
 A Conjugate negates the Imag component of a Complex number
@@ -208,7 +208,7 @@ If used on anything else, should produce a NaN (can't conjugate a Real)
 
 > conj :: (RealFloat a) => Arith a -> Arith a
 > conj (Complex r i) = Complex r (i * (-1.0))
-> conj _             = NaN
+> conj _ = NaN
 
 
 Complex exponentiation involves careful use of the Euler identity
@@ -250,6 +250,7 @@ This will make sure we execute the correct exponentiation formulas
 > mpow (Complex a b) (Complex c d) = let term = ((c*(atan2 b a))
 >                                                 + (0.5*(d*(log ((a*a)+(b*b)))))) in
 >                                      Complex (cos term) (sin term)
+> mpow _ _ = NaN
   
 Lifting is now a lot easier because we don't have to write
 specific patterns dealing with NaN. Because we wrote all the rules
