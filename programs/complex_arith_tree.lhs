@@ -95,9 +95,9 @@ values.
 >              | Sub  (Arith a) (Arith a)
 >              | Mul  (Arith a) (Arith a)
 >              | Div  (Arith a) (Arith a)
+>              | Pow  (Arith a) (Arith a)
 >                deriving (Show, Eq)
 
--->               | Pow (Arith a) (Arith a) -- exponentiation is hard
 
 
 Because the arithmetic operations we previously used in arith_tree.lhs
@@ -108,10 +108,13 @@ will have a pattern to deal with when NaN was found by returning NaN
 (Note: there will be a lot of Complex math here, so feel free
 to skip down quite a bit to avoid reading lots of this)
 
+The main type-class used here will be RealFloat, which supports
+all operations we need (division, exponentiation, equivalence, ordering)
+
 Arithmetic is easy because it is simply adding both
 components of numbers. Such that (a+bj)+(c+dj) = (a+c)+(b+d)j
 
-> add :: (Num a) => Arith a -> Arith a -> Arith a
+> add :: (RealFloat a) => Arith a -> Arith a -> Arith a
 > add (Real x) (Real y)               = Real (x + y)
 > add (Real x) (Complex r i)          = Complex (r + x) i
 > add (Complex r i) (Real y)          = Complex (r + y) i
@@ -124,7 +127,7 @@ left-hand Reals because you have to *subtract* the imag component from
 nothing, meaning we just negate the given Imag component.
 The subtraction of two complex nums is (a+bj)-(c+dj) = (a-c)+(b-d)j
 
-> sub :: (Num a, Fractional a) => Arith a -> Arith a -> Arith a
+> sub :: (RealFloat a) => Arith a -> Arith a -> Arith a
 > sub (Real x)        (Real y)        = Real (x - y)
 > sub (Real x)        (Complex r i)   = Complex (x-r) (i*(-1.0))
 > sub (Complex r i)   (Real y)        = Complex (r-y) i
@@ -140,7 +143,7 @@ the multiplication function again to compute the final value.
 
 (a+bj) * (c+dj) = (ac-bd) + (ad+bc)j
 
-> mul :: (Num a) => Arith a -> Arith a -> Arith a
+> mul :: (RealFloat a) => Arith a -> Arith a -> Arith a
 > mul (Real x)        (Real y)        = Real (x*y)
 > mul (Real x)        (Complex r i)   = mul (Complex x 0) (Complex r i)
 > mul (Complex r i )  (Real y)        = mul (Complex r i) (Complex r 0)
@@ -153,7 +156,7 @@ has to check for whether the denominator is a Zero value (in both
 Complex and Real terms), we need a function that can handle both cases
 and assert a Boolean.
 
-> isZero :: (Eq a, Num a) => Arith a -> Bool
+> isZero :: (RealFloat a) => Arith a -> Bool
 > isZero (Real a)      = a == 0
 > isZero (Complex r i) = and [r==0, i==0]
 > isZero _             = False
@@ -166,7 +169,7 @@ Complex and recurisvely call the mdiv function again
 
 (a+bj) / (c+dj) = (ac+bd)/(a^2+b^2) + (ad-cb)/(a^2+b^2)
 
-> mdiv :: (Eq a, Num a, Fractional a) => Arith a -> Arith a -> Arith a
+> mdiv :: (RealFloat a) => Arith a -> Arith a -> Arith a
 > mdiv (Real x) (Real y)  = if (isZero (Real y)) then NaN else Real (x/y) 
 > mdiv (Real x)      (Complex r i) = mdiv (Complex x 0) (Complex r i)
 > mdiv (Complex r i) (Real y)      = mdiv (Complex r i) (Complex y 0) 
@@ -182,7 +185,7 @@ Negation is simply inverting a number over it's X (or real/imag) axis.
 Negate(5) => -5
 Negate(5+2j) => -5-2j
 
-> neg :: (Num a, Fractional a) => Arith a -> Arith a
+> neg :: (RealFloat a) => Arith a -> Arith a
 > neg (Real x)      = Real (x * (-1.0))
 > neg (Complex r i) = Complex (r * (-1.0)) (i * (-1.0))
 > neg _             = NaN
@@ -191,10 +194,10 @@ Negate(5+2j) => -5-2j
 The Absolute value of a number will return a positive-only value.
 This is a unary operator that works both on Real and Complex values.
 
-> toPosn :: (Num a, Fractional a, Ord a) => a -> a
+> toPosn :: (RealFloat a) => a -> a
 > toPosn x = if x < 0.0 then (x*(-1.0)) else x
 
-> mabs :: (Num a, Fractional a, Ord a) => Arith a -> Arith a
+> mabs :: (RealFloat a) => Arith a -> Arith a
 > mabs (Real x)       = Real (toPosn x)
 > mabs (Complex r i)  = Complex (toPosn r) (toPosn i)
 > mabs _              = NaN
@@ -203,11 +206,51 @@ This is a unary operator that works both on Real and Complex values.
 A Conjugate negates the Imag component of a Complex number
 If used on anything else, should produce a NaN (can't conjugate a Real)
 
-> conj :: (Num a, Fractional a) => Arith a -> Arith a
+> conj :: (RealFloat a) => Arith a -> Arith a
 > conj (Complex r i) = Complex r (i * (-1.0))
 > conj _             = NaN
 
 
+Complex exponentiation involves careful use of the Euler identity
+
+e^(ix) = cos x = i sin x
+
+Instead it must be re-written in terms of two complex variables
+(a+bi) and (c+di)
+
+(a+bi)^(c+di) = cos (c * arg|a+bi|) + i sin (0.5*d* ln | a**2 + b**2 |)
+
+where arg is the complex arg function arg(x+iy) = atan(y/x)
+
+This one has weird interactions, specially when you try to
+exponentiate numbers by Complex numbers that are actually Real
+
+The casting table is like the others:
+Real ^ Real       = Real
+Real ^ Complex    = Complex
+Complex ^ Real    = Complex
+Complex ^ Complex = Complex
+
+But the above complex exponentiation formula fails if
+you are actually exponentiating by a Complex number with no imaginary value
+So to work around this, we add two more rules
+
+Real(x) ^ Complex(r, 0) = Real(x) ^ Real(r)
+Complex(r, 0) ^ Real(y) = Real(r) ^ Real(y)
+
+This will make sure we execute the correct exponentiation formulas
+
+
+> mpow :: (RealFloat a, Eq a) => Arith a -> Arith a -> Arith a
+> mpow (Real x)      (Real y)      = Real (x**y)
+> mpow (Real x)      (Complex r 0) = mpow (Real x) (Real r)
+> mpow (Complex r 0) (Real y)      = mpow (Real r) (Real y)
+> mpow (Real x)      (Complex r i) = mpow (Complex x 0) (Complex r i)
+> mpow (Complex r i) (Real y)      = mpow (Complex r i) (Complex y 0)
+> mpow (Complex a b) (Complex c d) = let term = ((c*(atan2 b a))
+>                                                 + (0.5*(d*(log ((a*a)+(b*b)))))) in
+>                                      Complex (cos term) (sin term)
+  
 Lifting is now a lot easier because we don't have to write
 specific patterns dealing with NaN. Because we wrote all the rules
 in our arithmetic functions, we simply just delegate a function to
@@ -216,7 +259,7 @@ both values (see "arith_tree.lhs" for the original code)
 Now for the final part where we solve our arithmetic tree, matching
 across all patterns and solving for the final value
 
-> solve :: (Eq a, Num a, Fractional a, Floating a, Ord a) => Arith a -> Arith a
+> solve :: (RealFloat a) => Arith a -> Arith a
 > solve (Real x)      = Real x
 > solve (Complex r i) = Complex r i
 > solve (Abs a)       = mabs (solve a)
@@ -226,6 +269,7 @@ across all patterns and solving for the final value
 > solve (Sub a b)     = sub  (solve a) (solve b)
 > solve (Mul a b)     = mul  (solve a) (solve b)
 > solve (Div a b)     = mdiv (solve a) (solve b)
+> solve (Pow a b)     = mpow (solve a) (solve b)
 
 
 Testing to make sure it all works.
@@ -244,5 +288,9 @@ Testing to make sure it all works.
 >   putStrLn $ show $ solve (Mul (Complex 3 5) (Complex 2 3))
 >   putStr "(/ (10+10j) (2+2j)) => "
 >   putStrLn $ show $ solve (Div (Complex 10 10) (Complex 2 2))
+>   putStr "(pow 2 (1+0j)) => "
+>   putStrLn $ show $ solve (Pow (Real 2) (Complex 1 0))
+>   putStr "(pow 2 (0+1j)) => "
+>   putStrLn $ show $ solve (Pow (Real 2) (Complex 0 1))
 
 -- end
