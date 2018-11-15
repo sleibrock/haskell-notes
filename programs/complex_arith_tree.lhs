@@ -241,7 +241,7 @@ Complex(r, 0) ^ Real(y) = Real(r) ^ Real(y)
 This will make sure we execute the correct exponentiation formulas
 
 
-> mpow :: (RealFloat a, Eq a) => Arith a -> Arith a -> Arith a
+> mpow :: (RealFloat a) => Arith a -> Arith a -> Arith a
 > mpow (Real x)      (Real y)      = Real (x**y)
 > mpow (Real x)      (Complex r 0) = mpow (Real x) (Real r)
 > mpow (Complex r 0) (Real y)      = mpow (Real r) (Real y)
@@ -274,23 +274,18 @@ across all patterns and solving for the final value
 
 Testing to make sure it all works.
 
+> solveP :: (RealFloat a, Show a) => String -> Arith a -> IO ()
+> solveP s eq = putStrLn $ (++) s $ show $ solve eq
+
 > main :: IO ()
 > main = do
->   putStr "(+ 5 7) => "
->   putStrLn $ show $ solve (Add (Real 5) (Real 7))
->   putStr "(+ (3+4j) (2+3j)) => "
->   putStrLn $ show $ solve (Add (Complex 3 4) (Complex 2 3))
->   putStr "(+ 5 (3+5j)) => "
->   putStrLn $ show $ solve (Add (Real 5) (Complex 3 5))
->   putStr "(/ 5 (0+0j)) => "
->   putStrLn $ show $ solve (Div (Real 5) (Complex 0 0))
->   putStr "(* (3+5j) (2+3j)) => "
->   putStrLn $ show $ solve (Mul (Complex 3 5) (Complex 2 3))
->   putStr "(/ (10+10j) (2+2j)) => "
->   putStrLn $ show $ solve (Div (Complex 10 10) (Complex 2 2))
->   putStr "(pow 2 (1+0j)) => "
->   putStrLn $ show $ solve (Pow (Real 2) (Complex 1 0))
->   putStr "(pow 2 (0+1j)) => "
->   putStrLn $ show $ solve (Pow (Real 2) (Complex 0 1))
+>   solveP "(+ 5 7) => " (Add (Real 5) (Real 7))
+>   solveP "(+ (3+4j) (2+3j)) => " (Add (Complex 3 4) (Complex 2 3))
+>   solveP "(+ 5 (3+5j)) => " (Add (Real 5) (Complex 3 5))
+>   solveP "(/ 5 (0+0j)) => " (Div (Real 5) (Complex 0 0))
+>   solveP "(* (3+5j) (2+3j)) => " (Mul (Complex 3 5) (Complex 2 3))
+>   solveP "(/ (10+10j) (2+2j)) => " (Div (Complex 10 10) (Complex 2 2))
+>   solveP "(pow 2 (1+0j)) => " (Pow (Real 2) (Complex 1 0))
+>   solveP "(pow 2 (0+1j)) => " (Pow (Real 2) (Complex 0 1))
 
 -- end
