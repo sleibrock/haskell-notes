@@ -1,5 +1,7 @@
 -- Symbolic Calculus in Haskell
 
+(Inspiration and reference from: http://5outh.blogspot.com/2013/05/symbolic-calculus-in-haskell.html)
+
 
 Calculus is the study of continuous functions that change.
 
@@ -59,153 +61,169 @@ functions are composed of one another, or of multiplication/division rules).
 
 
 
-> data Calc a = NaN
->             | Const a         -- a constant value ie 5
->             | Var a           -- a variable with a
->             | Neg (Calc a)    -- a negative value
->             | Add (Calc a) (Calc a)  -- distributive laws
->             | Sub (Calc a) (Calc a)
->             | Mul (Calc a) (Calc a)  -- product rule
->             | Div (Calc a) (Calc a)  -- quotient rule
->             | Pow (Calc a) (Calc a)  -- ax^(f(x))
->             | Exp (Calc a) (Calc a)  -- ne^f(x)
->             | Ln  (Calc a)           -- logarithm rule #1
->             | Log (Calc a)           -- logarithm rule #2
->             | Sin (Calc a)           -- trig laws, sin(x) = -cos(x)
->             | Cos (Calc a)           -- cos(x) => sin(x)
->             | Tan (Calc a)           -- tan(x) = sin(x)/cos(x)
+> data Expr a = NaN                    -- when something is div by zero
+>             | Var Char               -- a variable with a Char
+>             | Const a                -- a constant value ie 5
+>             | Add (Expr a) (Expr a)  -- distributive laws
+>             | Sub (Expr a) (Expr a)
+>             | Mul (Expr a) (Expr a)  -- product rule
+>             | Div (Expr a) (Expr a)  -- quotient rule
+>             | Pow (Expr a) (Expr a)  -- ax^(f(x))
+>             | Exp (Expr a) (Expr a)  -- ne^f(x)
+>             | Ln  (Expr a)           -- logarithm rule #1
+>             | Log (Expr a)           -- logarithm rule #2
+>             | Sin (Expr a)           -- trig laws, sin(x) = -cos(x)
+>             | Cos (Expr a)           -- cos(x) => sin(x)
+>             | Tan (Expr a)           -- tan(x) = sin(x)/cos(x)
 >               deriving (Show, Eq)
 
 
-Still incomplete, but a work in progress.
-TODO:
-- powers of a^x
-- e^x
-- trig identities / reciprocals?
+The simplify function applies a bunch of mathematical rules to make
+expressions a lot simpler. Things like operations with zeroes, merging
+operations between two constants, combining like-term powers, handling
+negative number multiplication, and other types of common math identities
+to reduce expressions to simple form.
 
-> derive :: (Num a, Eq a) => Calc a -> Calc a
-> derive (Const a)               = Const 0
-> derive (Var a)                 = Const a
-> derive (Neg f)                 = Neg (derive f)
-> derive (Add f g)               = Add (derive f) (derive g)
-> derive (Pow (Var a) (Const 1)) = Const a
-> derive (Pow (Var a) (Const 2)) = Var (a*2)
-> derive (Pow (Var a) (Const n)) = Pow (Var (a*n)) (Const (n-1))
-> derive (Pow f (Const n))       = Mul (Pow (Mul (Const n) f) (Const (n-1))) (reduce (derive f))
-> derive (Sin (Var a))           = Cos (Var a)
-> derive (Cos (Var a))           = Neg (Sin (Var a))
-> derive (Tan f)                 = derive (Div (Sin f) (Cos f))
-> derive (Ln  (Var a))           = Div (Const 1) (Var a)
-> derive (Ln f)    = reduce (Mul (derive f) (derive f)) 
-> derive (Mul f g) = reduce (Add (Mul f (derive g)) (Mul (derive f) g))
-> derive (Div f g) = Div (Sub (reduce (Mul f (derive g))) (reduce (Mul (derive f) g))) (Pow g (Const 2))
+The fullSimplifiy applies a recursive traversal of the expression tree
+until it is fully "simplified".
 
-> derive _ = NaN
-
-
-Term reduction in Haskell for weird edge cases
-  - 0 * any = 0
-  - 1 * any = any
-  - sin(x)^2 + cos(x)^2 = 1
-
-> reduce :: (Eq a, Num a) => Calc a -> Calc a
-> reduce (Neg (Neg f))        = f   -- double negative
-> reduce (Mul (Const 1) f)    = reduce f
-> reduce (Mul f (Const (-1))) = Neg (reduce f)
-> reduce (Mul (Const (-1)) f) = Neg (reduce f)
+> simplify :: (RealFloat a) => Expr a -> Expr a
+> simplify (Add (Const a) (Const b)) = Const (a + b)
+> simplify (Add a         (Const 0)) = simplify a
+> simplify (Add (Const 0)         b) = simplify b
+>
+> simplify (Sub (Const a) (Const b)) = Const (a - b)
+> simplify (Sub a         (Const 0)) = simplify a
+> simplify (Sub (Const 0)         b) = simplify (neg b) -- negate this?
+>
+> simplify (Mul (Const a) (Const b)) = Const (a * b)
+> simplify (Mul a         (Const 1)) = simplify a
+> simplify (Mul (Const 1)         b) = simplify b
+> simplify (Mul a         (Const 0)) = Const 0
+> simplify (Mul (Const 0)         b) = Const 0
+> simplify (Mul (Var l)   (Const c)) = Mul (Const c) (Var l)
+>
+> -- combine equal terms (and when there's neg numbers involved)
+> simplify (Mul a                    b) | a==b = Pow a (Const 2)
+> simplify (Mul a (Mul (Const (-1)) b)) | a==b = Mul (Const (-1)) (Pow a (Const 2))
+> simplify (Mul (Mul (Const (-1)) a) b) | a==b = Mul (Const (-1)) (Pow a (Const 2))
+>
+> -- division rules (divide by zero results in a NaN)
+> simplify (Div (Const a) (Const b)) = Const (a / b)
+> simplify (Div (Const 0)         _) = Const 0
+> simplify (Div _         (Const 0)) = NaN
+> simplify (Div a                 b) | a == b = Const 1   -- (x/x) = 1
+> simplify (Div a         (Const 1)) = simplify a
 > 
-> reduce (Mul f (Neg g)) =
->   if f == g then Neg (Pow (reduce f) (Const 2))
->   else Mul (reduce f) (Neg (reduce g))
-> 
-> reduce (Mul (Neg f) g) =
->   if f == g then Neg (Pow (reduce f) (Const 2))
->   else Mul (Neg (reduce f)) (reduce g)
-> 
-> reduce (Mul f g) =
->   if f == g then (Pow (reduce f) (Const 2))
->   else Mul (reduce f) (reduce g)
+> simplify (Pow (Const a) (Const b)) = Const (a ** b)
+> simplify (Pow a         (Const 1)) = simplify a
+> simplify (Pow a         (Const 0)) = Const 1
+> simplify (Pow (Pow c (Const b)) (Const a)) = Pow c (Const (a*b))
 >
-> -- Euler Identity rules   sin(x)^2 + cos(x)^2 == 1
-> reduce (Add (Pow (Sin f) (Const 2)) (Pow (Cos g) (Const 2))) =
->   if f == g then Const 1
->   else Add (Pow (Sin (reduce f)) (Const 2)) (Pow (Cos (reduce g)) (Const 2))
 >
-> reduce (Add (Pow (Cos f) (Const 2)) (Pow (Sin g) (Const 2))) =
->   if f == g then Const 1
->   else Add (Pow (Cos (reduce f)) (Const 2)) (Pow (Sin (reduce g)) (Const 2))
+> -- instead of having (-f + g), lets turn it into (g - f)
+> simplify (Add (Mul (Const (-1)) a) b) = Sub b a
 >
-> reduce (Sub (Neg (Pow (Sin f) (Const 2))) (Pow (Cos g) (Const 2))) =
->   if f == g then Neg (Const 1)
->   else Sub (Neg (Pow (Sin (reduce f)) (Const 2))) (Pow (Cos (reduce g)) (Const 2))
 >
-> reduce (Sub (Neg (Pow (Cos f) (Const 2))) (Pow (Sin g) (Const 2))) =
->   if f == g then Neg (Const 1)
->   else Sub (Neg (Pow (Cos (reduce f)) (Const 2))) (Pow (Sin (reduce g)) (Const 2))
+> simplify (Add a b) = Add (simplify a) (simplify b)
+> simplify (Sub a b) = Sub (simplify a) (simplify b)
+> simplify (Mul a b) = Mul (simplify a) (simplify b)
+> simplify (Div a b) = Div (simplify a) (simplify b)
 >
-> -- generic non-specific reduction recursion rules
-> reduce (Neg f)   = Neg (reduce f)
-> reduce (Add f g) = Add (reduce f) (reduce g)
-> reduce (Sub f g) = Sub (reduce f) (reduce g)
-> reduce (Div f g) =
->   if f == g then Const 1
->   else Div (reduce f) (reduce g)
-> reduce (Pow f g) = Pow (reduce f) (reduce g)
-> reduce (Ln f)    = Ln (reduce f)
-> reduce (Sin f)   = Sin (reduce f)
-> reduce (Cos f)   = Cos (reduce f)
-> reduce (Tan f)   = Tan (reduce f)
-> reduce a = a   -- no reductions possible?
+> simplify (Tan a)   = Div (Sin a) (Cos a)
+>
+> simplify f = id f
+>
+>
+> fullSimplify expr = fullSimplify' expr (Const 0)
+>   where fullSimplify' cur last | cur == last = cur
+>                                | otherwise = let cur' = simplify cur
+>                                  in fullSimplify' cur' cur
+>
+
+
+> neg :: (RealFloat a) => Expr a -> Expr a
+> neg NaN       = NaN
+> neg (Var x)   = (Mul (Const (-1)) (Var x))
+> neg (Const c) = Const (-c)
+> neg (Add a b) = Add (neg a) (neg b)
+> neg (Sub a b) = Sub (neg a) (neg b)
+> neg (Mul a b) = Mul (neg a) b
+> neg (Div a b) = Div (neg a) b
+> neg (Sin f)   = Mul (Const (-1)) (Sin f)
+> neg (Cos f)   = Mul (Const (-1)) (Cos f)
+> neg (Tan f)   = Mul (Const (-1)) (Tan f)
+> neg (Ln f)    = Mul (Const (-1)) (Ln f)
 
 
 
-The pretty printing section where we map all possible calculation
-types into pretty strings for printing.
-By extension, this could also be extended to LaTex later down the line.
+> derive :: (RealFloat a) => Expr a -> Expr a
+> derive NaN = NaN
+> derive (Const c) = Const 0
+> derive (Var x)   = Const 1
+> derive (Add f g) = Add (derive f) (derive g)
+> derive (Sub f g) = Sub (derive f) (derive g)
+> derive (Mul (Const x) (Var l)) = Const x
+> derive (Mul (Var l) (Const x)) = Const x
+> derive (Pow (Var l) (Const n)) = Pow (Mul (Const n) (Var l)) (Const (n-1))
+> derive (Pow (Mul (Const c) (Var l)) (Const n)) = Pow (Mul (Const (n*c)) (Var l)) (Const (n-1))
+> derive (Pow f (Const n)) = Mul (derive f) (Pow (Mul (Const n) f) (Const (n-1)))
+>
+> derive (Ln (Var c)) = (Div (Const 1) (Var c))
+>
+> derive (Sin (Var c)) = Cos (Var c)
+> derive (Cos (Var c)) = neg (Sin (Var c))
+>
+> derive (Mul f g) = Add (Mul f (derive g)) (Mul (derive f) g)
+>
+> derive (Div f g) = Div (Sub (Mul f (derive g)) (Mul (derive f) g)) (Pow g (Const 2)) 
 
 > join :: (Foldable t) => t String -> String
 > join = foldl (++) ""
 
-> pretty :: (Eq a, Num a, Show a) => Calc a -> String
-> pretty (Const a)             = show a
-> pretty (Var 1)               = "x"
-> pretty (Var a)               = join [(show a), "x"]
-> pretty (Neg f)               = join ["-", (pretty f)]
-> pretty (Add f g)             = join ["(", (pretty f), "+", (pretty g), ")"]
-> pretty (Sub f g)             = join ["(", (pretty f), "-", (pretty g), ")"]
-> pretty (Mul f (Const 1))     = pretty f
-> pretty (Mul (Const 1) f)     = pretty f
-> pretty (Mul f (Const x))     = join [(show x), (pretty f)]
-> pretty (Mul (Const x) f)     = join [(show x), (pretty f)]
-> pretty (Mul f g)             = join ["(", (pretty f), "*", (pretty g), ")"]
-> pretty (Div f (Const 1))     = pretty f
-> pretty (Div f g)             = join ["(", (pretty f), "/", (pretty g), ")"]
-> pretty (Pow a (Const x))       = join ["[", (pretty a), "^", (show x), "]"]
-> pretty (Pow a n)             = join ["[", (pretty a), "^(", (pretty n), ")]"]
-> pretty (Sin f)               = join ["sin(", (pretty f), ")"]
-> pretty (Cos f)               = join ["cos(", (pretty f), ")"]
-> pretty (Tan f)               = join ["tan(", (pretty f), ")"]
-> pretty (Ln f)                = join ["log|", (pretty f), "|"]
-> pretty f                     = show f  -- <- last resort formatter
+
+> pretty :: (RealFloat a, Show a) => Expr a -> String
+> pretty (Const a)              = show a
+> pretty (Var a)                = join [(a:"")]
+> pretty (Add f g)              = join ["(", (pretty f), "+", (pretty g), ")"]
+> pretty (Sub f g)              = join ["(", (pretty f), "-", (pretty g), ")"]
+> pretty (Mul f (Const 1))      = pretty f
+> pretty (Mul (Const 1) f)      = pretty f
+> pretty (Mul (Const (-1)) f)   = join ["-", (pretty f)]
+> pretty (Mul f (Const (-1)))   = join ["-", (pretty f)]
+> pretty (Mul f (Const x))      = join [(show x), (pretty f)]
+> pretty (Mul (Const x) f)      = join [(show x), (pretty f)]
+> pretty (Mul f g)              = join ["(", (pretty f), "*", (pretty g), ")"]
+> pretty (Div f g)              = join ["(", (pretty f), "/", (pretty g), ")"]
+> pretty (Pow a (Const x))      = join ["[", (pretty a), "^", (show x), "]"]
+> pretty (Pow a n)              = join ["[", (pretty a), "^(", (pretty n), ")]"]
+> pretty (Sin f)                = join ["sin(", (pretty f), ")"]
+> pretty (Cos f)                = join ["cos(", (pretty f), ")"]
+> pretty (Tan f)                = join ["tan(", (pretty f), ")"]
+> pretty (Ln f)                 = join ["log|", (pretty f), "|"]
+> pretty f = show f -- <- last resort formatter
 
 
 Now to test as many functions out as we can.
 
-> solve :: (Num a, Eq a, Show a) => String -> Calc a -> IO ()
-> solve s f = putStrLn $ (++) s $ pretty $ reduce $ derive f
+> solve :: (RealFloat a, Show a) => String -> Expr a -> IO ()
+> solve s f = putStrLn $ (++) s $ pretty $ fullSimplify $ derive $ fullSimplify f
 
 > main :: IO ()
 > main = do
->   solve "dy/dx 5 => " (Const 5)
->   solve "dy/dx 2x => " (Var 2)
->   solve "dy/dx x^2 => " (Pow (Var 1) (Const 2))
->   solve "dy/dx 7x^5 => " (Pow (Var 7) (Const 5))
->   solve "dy/dx 7x^5 + 8x^3 => " (Add (Pow (Var 7) (Const 5)) (Pow (Var 8) (Const 3)))
->   solve "dy/dx ln|x| => " (Ln (Var 1))
->   solve "dy/dx sin(x)^7 => " (Pow (Sin (Var 1)) (Const 7))
->   solve "dy/dx sin(x)*cos(2x) => " (Mul (Sin (Var 1)) (Cos (Var 2)))
->   solve "dy/dx tan(x) => " (Tan (Var 1))
->   solve "dy/dx -tan(x) => " (Neg (Tan (Var 1)))
+>   putStrLn "HELLO"
+>   solve "dy/dx 5 => " $ Const 5
+>   solve "dy/dx x => " $ Var 'x'
+>   solve "dy/dx 5x => " $ Mul (Const 5) (Var 'x')
+>   solve "dy/dx x^2 => " $ Pow (Var 'x') (Const 2)
+>   solve "dy/dx 7x^5 => " $ Pow (Mul (Const 7) (Var 'x')) (Const 5)
+>   solve "dy/dx 7x^5 + 8x^3 => " (Add (Pow (Mul (Const 7) (Var 'x')) (Const 5)) (Pow (Mul (Const 8) (Var 'x')) (Const 3)))
+>   solve "dy/dx ln|x| => " $ Ln (Var 'x')
+>   solve "dy/dx cos(x) => " $ Cos (Var 'x')
+>   solve "dy/dx sin(x)^7 => " $ Pow (Sin (Var 'x')) (Const 7)
+>   solve "dy/dx sin(x)*cos(2x) => " $ Mul (Sin (Var 'x')) (Cos (Var 'x'))
+>   solve "dy/dx tan(x) => " $ Tan (Var 'x')
+>   --solve "dy/dx -tan(x) => " $ Mul (Const (-1)) (Tan (Var 'x'))
 
 Sample output for readers:
 
@@ -220,6 +238,7 @@ dy/dx sin(x)*cos(2x) => ((sin(x)*-sin(2x))+(cos(
 x)*cos(2x)))                                   
 dy/dx tan(x) => (-1/[cos(x)^2])
 dy/dx -tan(x) => -(-1/[cos(x)^2])    <-- wrong still
+
 
 -- end
               
